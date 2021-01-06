@@ -4,6 +4,7 @@ const bodyParser = require('body-parser');
 const Blockchain = require('./blockchain');
 const { v4: uuidv4 } = require('uuid');
 const port = process.argv[2];
+const axios = require('axios');
 // const promise = require('promise');
 
 const nodeAddress = uuidv4().split('-').join('');
@@ -51,27 +52,23 @@ app.post('/register-and-broadcast-node', function(req,res){
 //register newNodeUrl on each networkNodeUrl (using request promise library)
 const regNodesPromises = [];
  bitcoin.networkNodes.forEach(networkNodeUrl => {
-  const requestOptions = {
-  uri: networkNodeUrl + '/register-node',
-  method: 'POST',
-  body: { newNodeUrl: newNodeUrl },
-  json: true
-};
+//eatch fetch or get request needs pushing in, so replace Promise (from request promise library)
+// axios.get to return each promise, then promise all takes the array 
+// change object just to the body object? where do i use register-node??
 
-regNodesPromises.push(Promise(requestOptions));
+regNodesPromises.push(axios.post(networkNodeUrl + '/register-node', { newNodeUrl: newNodeUrl })
+);
 
   });
 
+  // change this to a promise all??
   Promise.all(regNodesPromises)
   .then(data => {
     // use the data to register all the nodes currently in network on the new node
-    const bulkRegisterOptions = {
-      uri: newNodeUrl + '/register-nodes-bulk',
-      method: 'POST',
-      body: { allNetworkNodes: [ ...bitcoin.networkNodes, bitcoin.currentNodeUrl] },
-      json: true
-    }
-    return Promise(bulkRegisterOptions);
+    
+    return axios.post(newNodeUrl + '/register-nodes-bulk', { allNetworkNodes: [ ...bitcoin.networkNodes, bitcoin.currentNodeUrl]
+    })
+    // return Promise(bulkRegisterOptions);
   })
   .then(data => {
     res.json({ note: 'New node registered with network successfully' });

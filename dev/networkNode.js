@@ -19,8 +19,27 @@ app.get('/blockchain', function (req, res) {
 })
  
 app.post('/transaction', function (req, res) {
-  const blockIndex = bitcoin.createNewTransaction(req.body.amount, req.body.sender, req.body.recipient);
-  res.json({ note: `Transaction will be added in block ${blockIndex}.`});
+  const newTransaction = req.body;
+  const blockIndex = bitcoin.addTransactionToPendingTransactions(newTransaction);
+  // const blockIndex = bitcoin.createNewTransaction(req.body.amount, req.body.sender, req.body.recipient);
+  // res.json({ note: `Transaction will be added in block ${blockIndex}.`});
+  res.json({note: `Transaction will be added in block ${blockIndex}.`})
+});
+
+// 1.add new trx to pending trx on this node then broadcast to all other nodes on the network.
+app.post('/transaction/broadcast', function(req,res) {
+  const newTransaction = bitcoin.createNewTransaction(req.body.amount, req.body.sender, req.body.recipient)
+  bitcoin.addTransactionToPendingTransactions(newTransaction);
+
+  const requestPromises = [];
+  bitcoin.networkNodes.forEach(networkNodeUrl => {
+    //now request to all other nodes on the network
+    requestPromises.push(axios.post(networkNodeUrl + '/transaction', newTransaction));
+  });
+  Promise.all(requestPromises)
+  .then(data=> {
+    res.json({ note: 'Transaction created and broadcast successfully.'})
+  })
 })
 
 app.get('/mine', function (req, res) {
@@ -36,12 +55,46 @@ app.get('/mine', function (req, res) {
   bitcoin.createNewTransaction(12.5, "00", nodeAddress);
 
   const newBlock = bitcoin.createNewBlock(nonce, previousBlockHash, blockHash);
-  res.json({ 
-    note: "New block mined successfully",
+
+  //now broadcast new block to all other nodes on the network
+  const requestPromises = []
+  bitcoin.networkNodes.forEach(networkNodeUrl => {
+    requestPromises.push(axios.post(networkNodeUrl + '/receive-new-block', { newBlock: newBlock }));
+  })
+  Promise.all(requestPromises)
+  .then(data => {
+    return axios.post(bitcoin.currentNodeUrl + '/transaction/broadcast', { amount: 12.5,
+      sender: "00",
+      recipient: "nodeAddress"
+    })
+  })
+  .then(data => {
+     res.json({ 
+    note: "New block mined and broadcast successfully",
     block: newBlock
 });
+}); 
 });
 
+app.post('/receive-new-block', function(req, res) {
+  const newBlock = req.body.newBlock;
+  const lastBlock = bitcoin.getLastBlock();
+  const correctHash = lastBlock.hash === newBlock.previousBlockHash;
+  const correctIndex = lastBlock['index'] + 1 === newBlock['index'];
+  if(correctHash && correctIndex){
+    bitcoin.chain.push(newBlock);
+    bitcoin.pendingTransactions = [];
+    res.json({
+      note: "New block received and accepted.",
+      newBlock: newBlock
+    });
+  } else {
+    res.json({
+      note: 'New block rejected.',
+      newBlock: newBlock
+    });
+  }
+});
 
 // Registering a node and broadcasting to the network
 app.post('/register-and-broadcast-node', function(req,res){
@@ -58,14 +111,12 @@ const regNodesPromises = [];
 
 regNodesPromises.push(axios.post(networkNodeUrl + '/register-node', { newNodeUrl: newNodeUrl })
 );
-
   });
 
   // change this to a promise all??
   Promise.all(regNodesPromises)
   .then(data => {
     // use the data to register all the nodes currently in network on the new node
-    
     return axios.post(newNodeUrl + '/register-nodes-bulk', { allNetworkNodes: [ ...bitcoin.networkNodes, bitcoin.currentNodeUrl]
     })
     // return Promise(bulkRegisterOptions);

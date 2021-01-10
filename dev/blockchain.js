@@ -36,6 +36,9 @@ Blockchain.prototype.getLastBlock = function () {
 }
 
 Blockchain.prototype.createNewTransaction = function (amount, sender, recipient) {
+
+  // WE SHOULD DO A CHECK TO ENSURE THE SENDER HAS ENOUGH AND THEN VERIFY THE TRANSACTION
+
   const newTransaction = {
     amount: amount,
     sender: sender,
@@ -98,6 +101,9 @@ if (!correctNonce || !correctPreviousBlockHash || !correctHash || !correctTransa
 
 return validChain;
 };
+
+
+///// methods used for block-explorer
 
 Blockchain.prototype.getBlock = function(blockHash) {
   let correctBlock = null;
